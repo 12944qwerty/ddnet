@@ -14,6 +14,7 @@
 #include <game/client/gameclient.h>
 #include <game/client/prediction/entities/character.h>
 
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -31,6 +32,8 @@ public:
 	bool m_InGame;
 	ColorRGBA m_Color;
 	bool m_ShowName;
+	bool m_ShowXCoord;
+	float m_XCoord;
 	char m_aName[std::max<size_t>(MAX_NAME_LENGTH, protocol7::MAX_NAME_ARRAY_SIZE)];
 	bool m_ShowFriendMark;
 	bool m_ShowClientId;
@@ -338,6 +341,43 @@ public:
 	{
 		m_Color = ColorRGBA(1.0f, 0.0f, 0.0f);
 	}
+};
+
+class CNamePlatePartXCoord : public CNamePlatePartText
+{
+private:
+	int m_XCoord = -1;
+	float m_FontSize = -INFINITY;
+	char m_Text[4];
+
+protected:
+	bool UpdateNeeded(CGameClient &This, const CNamePlateData &Data) override
+	{
+		m_Visible = Data.m_ShowXCoord;
+		if(!m_Visible)
+			return false;
+		m_XCoord = Data.m_InGame ? This.m_aClients[Data.m_ClientId].m_RenderCur.m_X : 17;
+		m_Color = Data.m_Color;
+		return m_FontSize != Data.m_FontSize || m_XCoord != Data.m_XCoord;
+	}
+	void UpdateText(CGameClient &This, const CNamePlateData &Data) override
+	{
+		float fx = ((float) m_XCoord) / 32.0f;
+		snprintf(m_Text, 4, ".%02i", (int)round((fx - std::floor(fx)) * 100.0f - 0.01));
+		if((m_XCoord & 31) == 14)
+			snprintf(m_Text, 4, "⇤");
+		if((m_XCoord & 31) == 17)
+			snprintf(m_Text, 4, "⇥");
+		
+		m_FontSize = Data.m_FontSize;
+		CTextCursor Cursor;
+		Cursor.m_FontSize = m_FontSize;
+		This.TextRender()->CreateOrAppendTextContainer(m_TextContainerIndex, &Cursor, m_Text);
+	}
+
+public:
+	CNamePlatePartXCoord(CGameClient &This) :
+		CNamePlatePartText(This) {}
 };
 
 class CNamePlatePartName : public CNamePlatePartText
@@ -727,6 +767,9 @@ private:
 		AddPart<CNamePlatePartPing>(This); // TClient
 		AddPart<CNamePlatePartIgnoreMark>(This); // TClient
 		AddPart<CNamePlatePartFriendMark>(This);
+		AddPart<CNamePlatePartNewLine>(This);
+		AddPart<CNamePlatePartXCoord>(This);
+		AddPart<CNamePlatePartNewLine>(This);
 		AddPart<CNamePlatePartClientId>(This, false);
 		AddPart<CNamePlatePartName>(This);
 		AddPart<CNamePlatePartNewLine>(This);
@@ -864,6 +907,7 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 
 	Data.m_ShowName = pPlayerInfo->m_Local ? g_Config.m_ClNamePlatesOwn : g_Config.m_ClNamePlates;
 	str_copy(Data.m_aName, GameClient()->m_aClients[pPlayerInfo->m_ClientId].m_aName);
+	Data.m_ShowXCoord = Data.m_InGame && g_Config.m_ClNamePlatesXCoord;
 	Data.m_ShowFriendMark = Data.m_ShowName && g_Config.m_ClNamePlatesFriendMark && GameClient()->m_aClients[pPlayerInfo->m_ClientId].m_Friend;
 	Data.m_ShowClientId = Data.m_ShowName && (g_Config.m_Debug || g_Config.m_ClNamePlatesIds);
 	Data.m_FontSize = 18.0f + 20.0f * g_Config.m_ClNamePlatesSize / 100.0f;
@@ -1009,6 +1053,7 @@ void CNamePlates::RenderNamePlatePreview(vec2 Position, int Dummy)
 	str_copy(Data.m_aName, str_utf8_skip_whitespaces(pName));
 	str_utf8_trim_right(Data.m_aName);
 	Data.m_FontSize = FontSize;
+	Data.m_ShowXCoord = false;
 
 	Data.m_ShowFriendMark = Data.m_ShowName && g_Config.m_ClNamePlatesFriendMark;
 
